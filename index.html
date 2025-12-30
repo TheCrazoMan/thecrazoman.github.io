@@ -264,16 +264,56 @@ footer {
   © 2026 Afton Robotics, LLC, William Afton. Logo Credit to galaxyfire1997 on Reddit
 </footer>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, updateDoc, doc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC5HwENSysWyxsZ0TRq5BGZ8MdhF-NRa2A",
+  authDomain: "aftonpinboard.firebaseapp.com",
+  projectId: "aftonpinboard",
+  storageBucket: "aftonpinboard.firebasestorage.app",
+  messagingSenderId: "514035393422",
+  appId: "1:514035393422:web:192f622b67abb500153adf"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 const board = document.getElementById("pinboard");
 const isOwner = true;
 
-/* ===== Pin Creation ===== */
-function addPin() {
-  const text = pinText.value.trim();
-  const user = pinUser.value.trim() || "Anonymous";
+/* ===== Load Pins from Firestore ===== */
+async function loadPins() {
+  const q = query(collection(db, "pins"), orderBy("timestamp"));
+  const snapshot = await getDocs(q);
+  snapshot.forEach(docSnap => {
+    const data = docSnap.data();
+    addPinToBoard(data.text, data.user, data.likes, data.dislikes, docSnap.id, data.comments || []);
+  });
+}
+
+/* ===== Add Pin to Firestore ===== */
+async function addPin() {
+  const text = document.getElementById("pinText").value.trim();
+  const user = document.getElementById("pinUser").value.trim() || "Anonymous";
   if (!text) return;
 
+  const docRef = await addDoc(collection(db, "pins"), {
+    text,
+    user,
+    likes: 0,
+    dislikes: 0,
+    comments: [],
+    timestamp: new Date()
+  });
+
+  addPinToBoard(text, user, 0, 0, docRef.id, []);
+  document.getElementById("pinText").value = "";
+}
+
+/* ===== Render Pin ===== */
+function addPinToBoard(text, user, likes, dislikes, id, commentsArr) {
   const pin = document.createElement("div");
   pin.className = "pin";
   pin.style.top = Math.random() * 420 + "px";
@@ -295,30 +335,42 @@ function addPin() {
 
     <div class="comment-input">
       <input placeholder="Add comment...">
-      <button onclick="addComment(this)">Post</button>
+      <button onclick="addComment(this, '${id}')">Post</button>
     </div>
 
     <div class="pin-footer">
       <button><i class="fab fa-twitter"></i></button>
       <button><i class="fas fa-share"></i></button>
       <button onclick="toggleCommentBox(this)"><i class="fas fa-comment"></i></button>
-      <button onclick="like(this)"><i class="fas fa-thumbs-up"></i> <span>0</span></button>
-      <button onclick="dislike(this)"><i class="fas fa-thumbs-down"></i> <span>0</span></button>
+      <button onclick="like(this, '${id}')"><i class="fas fa-thumbs-up"></i> <span>${likes}</span></button>
+      <button onclick="dislike(this, '${id}')"><i class="fas fa-thumbs-down"></i> <span>${dislikes}</span></button>
       <button onclick="toggleComments(this)">
         <i class="fas fa-chevron-down arrow"></i>
       </button>
     </div>
   `;
 
+  // Render existing comments
+  const commentsDiv = pin.querySelector(".comments");
+  commentsArr.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "comment";
+    div.textContent = `${c.user}: ${c.text}`;
+    commentsDiv.appendChild(div);
+  });
+
   board.appendChild(pin);
   makeDraggable(pin);
-  pinText.value = "";
 }
 
 /* ===== Mac Dots ===== */
 function deletePin(el) {
   if (!isOwner) return;
-  el.closest(".pin").remove();
+  const pin = el.closest(".pin");
+  const id = pin.querySelector(".pin-footer button:nth-child(4)").getAttribute("onclick").match(/'(.+?)'/)[1];
+  pin.remove();
+  const docRef = doc(db, "pins", id);
+  docRef.delete?.(); // optional: implement firestore delete if needed
 }
 
 function collapsePin(el) {
@@ -335,17 +387,26 @@ function toggleCommentBox(btn) {
   box.style.display = box.style.display === "flex" ? "none" : "flex";
 }
 
-function addComment(btn) {
+async function addComment(btn, id) {
   const pin = btn.closest(".pin");
   const input = btn.previousElementSibling;
   const text = input.value.trim();
   if (!text) return;
 
   const user = document.getElementById("pinUser").value || "Anonymous";
-  const c = document.createElement("div");
-  c.className = "comment";
-  c.textContent = `${user}: ${text}`;
-  pin.querySelector(".comments").appendChild(c);
+
+  const commentObj = { user, text };
+
+  const commentsDiv = pin.querySelector(".comments");
+  const div = document.createElement("div");
+  div.className = "comment";
+  div.textContent = `${user}: ${text}`;
+  commentsDiv.appendChild(div);
+
+  // Update Firestore
+  const docRef = doc(db, "pins", id);
+  await updateDoc(docRef, { comments: arrayUnion(commentObj) });
+
   input.value = "";
 }
 
@@ -365,12 +426,18 @@ function toggleComments(btn) {
 }
 
 /* ===== Reactions ===== */
-function like(btn) {
-  btn.querySelector("span").textContent++;
+async function like(btn, id) {
+  const span = btn.querySelector("span");
+  span.textContent = parseInt(span.textContent) + 1;
+  const docRef = doc(db, "pins", id);
+  await updateDoc(docRef, { likes: span.textContent });
 }
 
-function dislike(btn) {
-  btn.querySelector("span").textContent++;
+async function dislike(btn, id) {
+  const span = btn.querySelector("span");
+  span.textContent = parseInt(span.textContent) + 1;
+  const docRef = doc(db, "pins", id);
+  await updateDoc(docRef, { dislikes: span.textContent });
 }
 
 /* ===== Dragging ===== */
@@ -390,6 +457,9 @@ function makeDraggable(pin) {
   };
   document.onmouseup=()=>drag=false;
 }
+
+// Load pins on page load
+loadPins();
 </script>
 
 </body>
