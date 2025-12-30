@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Afton Robotics Pinboard</title>
 
-<!-- Icons -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 
 <style>
@@ -258,7 +257,7 @@ footer {
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, updateDoc, doc, arrayUnion } 
-  from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -300,10 +299,9 @@ async function addPin() {
   }
 }
 
-// Make it global so the button can call it
 window.addPin = addPin;
 
-/* ===== Load Pins from Firestore ===== */
+/* ===== Load Pins ===== */
 async function loadPins() {
   const q = query(collection(db, "pins"), orderBy("timestamp"));
   const snapshot = await getDocs(q);
@@ -317,8 +315,11 @@ async function loadPins() {
 function addPinToBoard(text, user, likes, dislikes, id, commentsArr) {
   const pin = document.createElement("div");
   pin.className = "pin";
-  pin.style.top = Math.random() * 420 + "px";
-  pin.style.left = Math.random() * 800 + "px";
+  
+  // Ensure pin is inside board bounds
+  const boardRect = board.getBoundingClientRect();
+  pin.style.top = Math.random() * (boardRect.height - 150) + "px";
+  pin.style.left = Math.random() * (boardRect.width - 320) + "px";
 
   pin.innerHTML = `
     <div class="pin-header">
@@ -358,11 +359,7 @@ function addPinToBoard(text, user, likes, dislikes, id, commentsArr) {
 }
 
 /* ===== Mac Dots ===== */
-function deletePin(el) {
-  if (!isOwner) return;
-  el.closest(".pin").remove();
-}
-
+function deletePin(el) { if(isOwner) el.closest(".pin").remove(); }
 function collapsePin(el) { el.closest(".pin").classList.add("collapsed"); }
 function expandPin(el) { el.closest(".pin").classList.remove("collapsed"); }
 
