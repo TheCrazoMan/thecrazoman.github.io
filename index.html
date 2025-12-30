@@ -68,7 +68,7 @@ footer { background:var(--primary); color:white; text-align:center; padding:12px
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
-import { getFirestore, collection, addDoc, doc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, doc, onSnapshot, updateDoc, arrayUnion, deleteDoc } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -100,8 +100,12 @@ window.deletePin = async function(el){
   if(!isOwner) return;
   const pin = el.closest(".pin");
   const pinId = pin.dataset.id;
-  pin.remove();
-  await updateDoc(doc(db,"pins",pinId),{deleted:true}); // mark deleted in Firestore
+  try{
+    await deleteDoc(doc(db,"pins",pinId));
+    pin.remove();
+  } catch(e){
+    console.error("Failed to delete pin:", e);
+  }
 }
 window.collapsePin = function(el){ el.closest(".pin").classList.add("collapsed"); }
 window.expandPin = function(el){ el.closest(".pin").classList.remove("collapsed"); }
@@ -119,13 +123,13 @@ window.toggleComments = function(btn){
 window.like = async function(btn,id){
   const span=btn.querySelector("span");
   const newVal = parseInt(span.textContent)+1;
-  span.textContent=newVal;
+  span.textContent = newVal;
   await updateDoc(doc(db,"pins",id),{likes:newVal});
 }
 window.dislike = async function(btn,id){
   const span=btn.querySelector("span");
   const newVal = parseInt(span.textContent)+1;
-  span.textContent=newVal;
+  span.textContent = newVal;
   await updateDoc(doc(db,"pins",id),{dislikes:newVal});
 }
 window.addComment = async function(btn,id){
@@ -144,15 +148,16 @@ window.addComment = async function(btn,id){
   input.value="";
 }
 window.sharePin = function(text){
-  if(navigator.share){
-    navigator.share({text});
-  } else {
-    prompt("Copy this text to share:", text);
-  }
+  try{
+    if(navigator.share){ navigator.share({text}); }
+    else{ prompt("Copy this text to share:", text); }
+  } catch(e){ console.log("Share failed:", e);}
 }
 window.tweetPin = function(user,text){
-  const tweet = encodeURIComponent(`From ${user} on thecrazoman.github.io/aftonrobotics: ${text}`);
-  window.open(`https://twitter.com/intent/tweet?text=${tweet}`,'_blank');
+  try{
+    const tweet = encodeURIComponent(`From ${user} on thecrazoman.github.io/aftonrobotics: ${text}`);
+    window.open(`https://twitter.com/intent/tweet?text=${tweet}`,'_blank');
+  } catch(e){ console.log("Twitter failed:", e);}
 }
 
 // Real-time listener
@@ -160,7 +165,6 @@ onSnapshot(collection(db,"pins"), snapshot=>{
   board.innerHTML="";
   snapshot.docs.forEach(docSnap=>{
     const d = docSnap.data();
-    if(d.deleted) return;
     addPinToBoard(d.text,d.user,d.likes,d.dislikes,docSnap.id,d.comments||[]);
   });
 });
